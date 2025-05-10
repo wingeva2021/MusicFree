@@ -9,6 +9,14 @@ jobs:
   build-android:
     if: "github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'release: ')"
     runs-on: ubuntu-latest
+    env: # 在 Job 级别定义环境变量，供所有步骤使用
+      KEYSTORE_PATH: keystore/release.jks # 密钥库在 runner 上的目标路径
+      KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }} # 密钥密码与密钥库密码相同
+      # 使用 GitHub Secret KEYSTORE_BASE64
+      RELEASE_KEYSTORE_BASE64_SECRET: ${{ secrets.KEYSTORE_BASE64 }}
+
     steps:
       - env:
           REQBODY: ${{github.event.pull_request.body}}
@@ -20,22 +28,16 @@ jobs:
       - name: Setup Env (Node.js)
         uses: actions/setup-node@v3
         with:
-          # 根据你之前的错误，这里应该使用项目兼容的版本
-          node-version: '22.x' # 或者 'lts/*' 或 '20', '22.x' (确保项目兼容)
-          # cache: 'yarn' # 如果使用 Yarn 并想缓存
+          node-version: '22.x'
+          # cache: 'yarn'
 
       - name: Install Pkgs (JS Dependencies)
-        # 根据你是否有 yarn.lock，选择合适的命令
-        # run: npm ci # 如果有 package-lock.json
-        run: yarn install --frozen-lockfile # 如果有 yarn.lock (推荐)
-        # run: npm install # 如果没有锁文件 (不推荐用于 CI)
+        run: yarn install --frozen-lockfile
 
       - name: Get Version from package.json
         run: echo "APP_VERSION=$(node -p -e 'require("./package.json").version')" >> $GITHUB_ENV
 
-      # --- 签名配置步骤已移除 ---
-
-      - name: Setup Java (JDK for Android Build) # 仍然需要 Java
+      - name: Setup Java (JDK for Android Build)
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
@@ -44,25 +46,119 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./android/gradlew
 
-      - name: Build Release App (will be debug-signed)
+      - name: Build Unsigned Release App
         run: |
           cd ./android
-          echo "Building with App Version: ${{ env.APP_VERSION }}"
-          ./gradlew assembleRelease --stacktrace
+          echo "Building Unsigned with App Version: ${{ env.APP_VERSION }}"
+          ./gradlew assembleRelease --stacktrace # 确保此任务生成 -unsigned.apk
 
-      - name: Upload Debug-Signed Release APK Artifact
+      - name: Decode Keystore
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64_SECRET" ]; then
+            echo "Error: KEYSTORE_BASE64 secret is not set or empty."
+            exit 1
+          fi
+          echo "Decoding keystore..."
+          mkdir -p $(dirname "$KEYSTORE_PATH") # 创建 keystore 目录，如果不存在
+          echo "$RELEASE_KEYSTORE_BASE64_SECRET" | base64 --decode > "$KEYSTORE_PATH"
+          echo "Keystore decoded to $KEYSTORE_PATH"
+          if [ ! -f "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "Error: Keystore file was not created or is empty after decoding."
+            ls -l $(dirname "$KEYSTORE_PATH") # 显示目录内容以帮助调试
+            exit 1
+          fi
+          ls -l "$KEYSTORE_PATH"
+
+      - name: Find apksigner
+        id: find_apksigner
+        run: |
+          APKSIGNER_PATH=$(find $ANDROID_HOME/build-tools -name apksigner -type f | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER_PATH" ]; then
+            echo "apksigner not found in $ANDROID_HOME/build-tools"
+            ALT_APKSIGNER_PATH=$(find /usr/lib/android-sdk/build-tools -name apksigner -type f | sort -V | tail -n 1)
+            if [ -z "$ALT_APKSIGNER_PATH" ]; then
+               echo "apksigner also not found in /usr/lib/android-sdk/build-tools. Please ensure Android SDK build-tools are correctly installed and $ANDROID_HOME is set."
+               exit 1
+            else
+               APKSIGNER_PATH=$ALT_APKSIGNER_PATH
+            fi
+          fi
+          echo "Found apksigner at: $APKSIGNER_PATH"
+          echo "APKSIGNER_PATH=$APKSIGNER_PATH" >> $GITHUB_OUTPUT
+
+      - name: Sign APKs
+        env:
+          APKSIGNER_PATH: ${{ steps.find_apksigner.outputs.APKSIGNER_PATH }}
+        run: |
+          echo "Signing APKs using KEYSTORE_PATH: $KEYSTORE_PATH"
+          UNSIGNED_APKS_DIR="android/app/build/outputs/apk/release"
+          SIGNED_APKS_DIR="android/app/build/outputs/apk/signed-release"
+          mkdir -p $SIGNED_APKS_DIR
+
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Error: Signing credentials (KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) are not fully set from secrets."
+            exit 1
+          fi
+
+          found_unsigned_apk=false
+          for unsigned_apk in $UNSIGNED_APKS_DIR/*-unsigned.apk; do
+            if [ -f "$unsigned_apk" ]; then
+              found_unsigned_apk=true
+              filename=$(basename "$unsigned_apk")
+              signed_apk_name="${filename/-unsigned/}"
+              signed_apk_path="$SIGNED_APKS_DIR/$signed_apk_name"
+
+              echo "Signing $unsigned_apk -> $signed_apk_path"
+              "$APKSIGNER_PATH" sign \
+                --ks "$KEYSTORE_PATH" \
+                --ks-pass pass:"$KEYSTORE_PASSWORD" \
+                --key-pass pass:"$KEY_PASSWORD" \
+                --ks-key-alias "$KEY_ALIAS" \
+                --out "$signed_apk_path" \
+                "$unsigned_apk"
+
+              "$APKSIGNER_PATH" verify "$signed_apk_path"
+              echo "Successfully signed and verified $signed_apk_path"
+            fi
+          done
+
+          if [ "$found_unsigned_apk" = false ]; then
+            echo "Warning: No unsigned APK found matching pattern $UNSIGNED_APKS_DIR/*-unsigned.apk"
+            # 你可以选择在这里失败，如果期望必须有未签名文件
+            # exit 1
+          fi
+
+          echo "Listing signed APKs:"
+          ls -l $SIGNED_APKS_DIR
+
+      - name: Remove Keystore File
+        if: always()
+        run: |
+          echo "Removing keystore file..."
+          rm -f "$KEYSTORE_PATH"
+          echo "Keystore file removed."
+
+      - name: Upload Signed Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: debug-signed-release-apk-${{ env.APP_VERSION }}
-          path: android/app/build/outputs/apk/release/*.apk # 路径可能不变，但内容是调试签名的
+          name: signed-release-apk-${{ env.APP_VERSION }}
+          path: android/app/build/outputs/apk/signed-release/*.apk
           if-no-files-found: error
 
       - name: Generate Changelog
         run: echo "Event name for changelog trigger:${{ github.event_name }}"
 
-  manual:
+  manual: # 对 manual job 也应用相同的更改
     runs-on: ubuntu-latest
     if: "github.event_name == 'workflow_dispatch'"
+    env: # 在 Job 级别定义环境变量
+      KEYSTORE_PATH: keystore/release.jks
+      KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      # 使用 GitHub Secret KEYSTORE_BASE64
+      RELEASE_KEYSTORE_BASE64_SECRET: ${{ secrets.KEYSTORE_BASE64 }}
+
     steps:
       - env:
           REQBODY: ${{github.event.pull_request.body}}
@@ -74,16 +170,13 @@ jobs:
       - name: Setup Env (Node.js)
         uses: actions/setup-node@v3
         with:
-          node-version: '22.x' # 与上面保持一致
-          # cache: 'yarn'
+          node-version: '22.x'
 
       - name: Install Pkgs (JS Dependencies)
-        run: yarn install --frozen-lockfile # 与上面保持一致
+        run: yarn install --frozen-lockfile
 
       - name: Get Version from package.json
         run: echo "APP_VERSION=$(node -p -e 'require("./package.json").version')" >> $GITHUB_ENV
-
-      # --- 签名配置步骤已移除 ---
 
       - name: Setup Java (JDK for Android Build)
         uses: actions/setup-java@v3
@@ -94,15 +187,99 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./android/gradlew
 
-      - name: Build Release App (will be debug-signed)
+      - name: Build Unsigned Release App
         run: |
           cd ./android
-          echo "Building with App Version: ${{ env.APP_VERSION }}"
+          echo "Building Unsigned with App Version: ${{ env.APP_VERSION }}"
           ./gradlew assembleRelease --stacktrace
 
-      - name: Upload Debug-Signed Release APK Artifact
+      - name: Decode Keystore
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64_SECRET" ]; then
+            echo "Error: KEYSTORE_BASE64 secret is not set or empty."
+            exit 1
+          fi
+          echo "Decoding keystore..."
+          mkdir -p $(dirname "$KEYSTORE_PATH") # 创建 keystore 目录
+          echo "$RELEASE_KEYSTORE_BASE64_SECRET" | base64 --decode > "$KEYSTORE_PATH"
+          echo "Keystore decoded to $KEYSTORE_PATH"
+          if [ ! -f "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "Error: Keystore file was not created or is empty after decoding."
+            ls -l $(dirname "$KEYSTORE_PATH") # 显示目录内容以帮助调试
+            exit 1
+          fi
+          ls -l "$KEYSTORE_PATH"
+
+      - name: Find apksigner
+        id: find_apksigner
+        run: |
+          APKSIGNER_PATH=$(find $ANDROID_HOME/build-tools -name apksigner -type f | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER_PATH" ]; then
+            echo "apksigner not found in $ANDROID_HOME/build-tools"
+            ALT_APKSIGNER_PATH=$(find /usr/lib/android-sdk/build-tools -name apksigner -type f | sort -V | tail -n 1)
+            if [ -z "$ALT_APKSIGNER_PATH" ]; then
+               echo "apksigner also not found in /usr/lib/android-sdk/build-tools. Please ensure Android SDK build-tools are correctly installed and $ANDROID_HOME is set."
+               exit 1
+            else
+               APKSIGNER_PATH=$ALT_APKSIGNER_PATH
+            fi
+          fi
+          echo "Found apksigner at: $APKSIGNER_PATH"
+          echo "APKSIGNER_PATH=$APKSIGNER_PATH" >> $GITHUB_OUTPUT
+
+      - name: Sign APKs
+        env:
+          APKSIGNER_PATH: ${{ steps.find_apksigner.outputs.APKSIGNER_PATH }}
+        run: |
+          echo "Signing APKs using KEYSTORE_PATH: $KEYSTORE_PATH"
+          UNSIGNED_APKS_DIR="android/app/build/outputs/apk/release"
+          SIGNED_APKS_DIR="android/app/build/outputs/apk/signed-release"
+          mkdir -p $SIGNED_APKS_DIR
+
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Error: Signing credentials (KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) are not fully set from secrets."
+            exit 1
+          fi
+
+          found_unsigned_apk=false
+          for unsigned_apk in $UNSIGNED_APKS_DIR/*-unsigned.apk; do
+            if [ -f "$unsigned_apk" ]; then
+              found_unsigned_apk=true
+              filename=$(basename "$unsigned_apk")
+              signed_apk_name="${filename/-unsigned/}"
+              signed_apk_path="$SIGNED_APKS_DIR/$signed_apk_name"
+
+              echo "Signing $unsigned_apk -> $signed_apk_path"
+              "$APKSIGNER_PATH" sign \
+                --ks "$KEYSTORE_PATH" \
+                --ks-pass pass:"$KEYSTORE_PASSWORD" \
+                --key-pass pass:"$KEY_PASSWORD" \
+                --ks-key-alias "$KEY_ALIAS" \
+                --out "$signed_apk_path" \
+                "$unsigned_apk"
+
+              "$APKSIGNER_PATH" verify "$signed_apk_path"
+              echo "Successfully signed and verified $signed_apk_path"
+            fi
+          done
+
+          if [ "$found_unsigned_apk" = false ]; then
+            echo "Warning: No unsigned APK found matching pattern $UNSIGNED_APKS_DIR/*-unsigned.apk"
+          fi
+
+          echo "Listing signed APKs:"
+          ls -l $SIGNED_APKS_DIR
+
+      - name: Remove Keystore File
+        if: always()
+        run: |
+          echo "Removing keystore file..."
+          rm -f "$KEYSTORE_PATH"
+          echo "Keystore file removed."
+
+      - name: Upload Signed Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: debug-signed-release-apk-manual-${{ env.APP_VERSION }}
-          path: android/app/build/outputs/apk/release/*.apk
+          name: signed-release-apk-manual-${{ env.APP_VERSION }}
+          path: android/app/build/outputs/apk/signed-release/*.apk
           if-no-files-found: error
