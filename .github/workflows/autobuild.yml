@@ -51,14 +51,14 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Upload Debug-Signed Release APK Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: debug-signed-release-apk-${{ env.APP_VERSION }}
           path: android/app/build/outputs/apk/release/*.apk # 路径可能不变，但内容是调试签名的
           if-no-files-found: error
 
       - name: Generate Changelog
-        run: echo "Event name for changelog trigger: ${{ github.event_name }}"
+        run: echo "Event name for changelog trigger:${{ github.event_name }}"
 
   manual:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Upload Debug-Signed Release APK Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: debug-signed-release-apk-manual-${{ env.APP_VERSION }}
           path: android/app/build/outputs/apk/release/*.apk
