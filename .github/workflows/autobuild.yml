@@ -10,48 +10,99 @@ jobs:
     if: "github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'release: ')"
     runs-on: ubuntu-latest
     steps:
-      - env: 
+      - env:
           REQBODY: ${{github.event.pull_request.body}}
         run: |
-          echo "${REQBODY}"
+          echo "PR Body: ${REQBODY}"
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Setup Env
+      - name: Setup Env (Node.js)
         uses: actions/setup-node@v3
-        with: 
-          node-version: 16
-      - name: Install Pkgs
-        run: npm ci
-      - name: Get Version
-        run: node -p -e '`VERSION=${require("./package.json").version}`' >> $GITHUB_ENV
-      - name: Build
-        run: | 
+        with:
+          # 根据你之前的错误，这里应该使用项目兼容的版本
+          node-version: '22.x' # 或者 'lts/*' 或 '20', '22.x' (确保项目兼容)
+          # cache: 'yarn' # 如果使用 Yarn 并想缓存
+
+      - name: Install Pkgs (JS Dependencies)
+        # 根据你是否有 yarn.lock，选择合适的命令
+        # run: npm ci # 如果有 package-lock.json
+        run: yarn install --frozen-lockfile # 如果有 yarn.lock (推荐)
+        # run: npm install # 如果没有锁文件 (不推荐用于 CI)
+
+      - name: Get Version from package.json
+        run: echo "APP_VERSION=$(node -p -e 'require("./package.json").version')" >> $GITHUB_ENV
+
+      # --- 签名配置步骤已移除 ---
+
+      - name: Setup Java (JDK for Android Build) # 仍然需要 Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./android/gradlew
+
+      - name: Build Release App (will be debug-signed)
+        run: |
           cd ./android
-          ./gradlew assembleRelease
+          echo "Building with App Version: ${{ env.APP_VERSION }}"
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Debug-Signed Release APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-signed-release-apk-${{ env.APP_VERSION }}
+          path: android/app/build/outputs/apk/release/*.apk # 路径可能不变，但内容是调试签名的
+          if-no-files-found: error
+
       - name: Generate Changelog
-        run: echo github.event_name
-  manual: 
+        run: echo "Event name for changelog trigger: ${{ github.event_name }}"
+
+  manual:
     runs-on: ubuntu-latest
     if: "github.event_name == 'workflow_dispatch'"
     steps:
-      - env: 
+      - env:
           REQBODY: ${{github.event.pull_request.body}}
         run: |
-          echo "${REQBODY}"
+          echo "Manual dispatch. REQBODY (if any from PR context): ${REQBODY}"
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Setup Env
+      - name: Setup Env (Node.js)
         uses: actions/setup-node@v3
-        with: 
-          node-version: 16
-      - name: Install Pkgs
-        run: npm ci
-      - name: Get Version
-        run: node -p -e '`VERSION=${require("./package.json").version}`' >> $GITHUB_ENV
-      - name: Build
-        run: | 
+        with:
+          node-version: '22.x' # 与上面保持一致
+          # cache: 'yarn'
+
+      - name: Install Pkgs (JS Dependencies)
+        run: yarn install --frozen-lockfile # 与上面保持一致
+
+      - name: Get Version from package.json
+        run: echo "APP_VERSION=$(node -p -e 'require("./package.json").version')" >> $GITHUB_ENV
+
+      # --- 签名配置步骤已移除 ---
+
+      - name: Setup Java (JDK for Android Build)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./android/gradlew
+
+      - name: Build Release App (will be debug-signed)
+        run: |
           cd ./android
-          ./gradlew assembleRelease
-      
+          echo "Building with App Version: ${{ env.APP_VERSION }}"
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Debug-Signed Release APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-signed-release-apk-manual-${{ env.APP_VERSION }}
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
