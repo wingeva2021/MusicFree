@@ -1,4 +1,4 @@
-import Config from "@/core/config.ts";
+import Config from "@/core/appConfig";
 import RNTrackPlayer, { Event, State } from "react-native-track-player";
 import LyricManager from "@/core/lyricManager";
 import LyricUtil from "@/native/lyricUtil";
@@ -54,7 +54,7 @@ module.exports = async function () {
     );
 
     RNTrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, () => {
-        const currentMusicItem = TrackPlayer.getCurrentMusic();
+        const currentMusicItem = TrackPlayer.currentMusic;
         if (currentMusicItem) {
             LyricUtil.setStatusBarLyricText(
                 `${currentMusicItem.title} - ${currentMusicItem.artist}`,

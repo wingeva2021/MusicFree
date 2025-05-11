@@ -2,17 +2,17 @@
  * 管理当前歌曲的歌词
  */
 
-import { isSameMediaItem } from "@/utils/mediaItem";
-import PluginManager from "./pluginManager";
-import LyricParser, { IParsedLrcItem } from "@/utils/lrcParser";
-import { GlobalState } from "@/utils/stateMapper";
 import { EDeviceEvents } from "@/constants/commonConst";
-import { DeviceEventEmitter } from "react-native";
-import Config from "./config.ts";
 import LyricUtil from "@/native/lyricUtil";
-import TrackPlayer from "./trackPlayer";
-import MediaExtra from "./mediaExtra";
+import LyricParser, { IParsedLrcItem } from "@/utils/lrcParser";
+import { getMediaExtra } from "@/utils/mediaExtra.ts";
+import { isSameMediaItem } from "@/utils/mediaUtils.ts";
 import minDistance from "@/utils/minDistance";
+import { GlobalState } from "@/utils/stateMapper";
+import { DeviceEventEmitter } from "react-native";
+import Config from "./appConfig.ts";
+import PluginManager from "./pluginManager";
+import TrackPlayer from "./trackPlayer";
 
 interface ILyricState {
   loading: boolean;
@@ -37,7 +37,7 @@ function resetLyricState() {
 
 // 重新获取歌词
 async function refreshLyric(fromStart?: boolean, forceRequest = false) {
-  const musicItem = TrackPlayer.getCurrentMusic();
+  const musicItem = TrackPlayer.currentMusic;
   try {
     if (!musicItem) {
       lyricStateStore.setValue({
@@ -82,7 +82,7 @@ async function refreshLyric(fromStart?: boolean, forceRequest = false) {
       let targetPlugin;
 
       for (let plugin of plugins) {
-        const realtimeMusicItem = TrackPlayer.getCurrentMusic();
+        const realtimeMusicItem = TrackPlayer.currentMusic;
         if (
           !isSameMediaItem(musicItem, realtimeMusicItem) ||
           plugin.name === musicItem.platform
@@ -128,10 +128,10 @@ async function refreshLyric(fromStart?: boolean, forceRequest = false) {
       }
     }
 
-    const realtimeMusicItem = TrackPlayer.getCurrentMusic();
+    const realtimeMusicItem = TrackPlayer.currentMusic;
     if (isSameMediaItem(musicItem, realtimeMusicItem)) {
       if (lrcSource) {
-        const mediaExtra = MediaExtra.get(musicItem);
+        const mediaExtra = getMediaExtra(musicItem);
         const parser = new LyricParser(lrcSource.rawLrc!, {
           extra: {
             offset: (mediaExtra?.lyricOffset || 0) * -1
@@ -166,7 +166,7 @@ async function refreshLyric(fromStart?: boolean, forceRequest = false) {
     }
   } catch (e) {
     console.log(e, "LRC");
-    const realtimeMusicItem = TrackPlayer.getCurrentMusic();
+    const realtimeMusicItem = TrackPlayer.currentMusic;
     if (isSameMediaItem(musicItem, realtimeMusicItem)) {
       // 异常情况
       lyricStateStore.setValue({

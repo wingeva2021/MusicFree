@@ -6,8 +6,7 @@ import ThemeText from "@/components/base/themeText";
 import { ImgAsset } from "@/constants/assetsConst";
 import Clipboard from "@react-native-clipboard/clipboard";
 
-import MediaMeta from "@/core/mediaExtra";
-import { getMediaKey } from "@/utils/mediaItem";
+import { getMediaUniqueKey } from "@/utils/mediaUtils";
 import FastImage from "@/components/base/fastImage";
 import Toast from "@/utils/toast";
 import LocalMusicSheet from "@/core/localMusicSheet";
@@ -22,13 +21,14 @@ import { showDialog } from "@/components/dialogs/useDialog";
 import { hidePanel, showPanel } from "../usePanel";
 import Divider from "@/components/base/divider";
 import { iconSizeConst } from "@/constants/uiConst";
-import Config from "@/core/config.ts";
+import Config from "@/core/appConfig";
 import TrackPlayer from "@/core/trackPlayer";
 import mediaCache from "@/core/mediaCache";
 import LyricManager from "@/core/lyricManager";
 import { IIconName } from "@/components/base/icon.tsx";
 import MusicSheet from "@/core/musicSheet";
 import downloader from "@/core/downloader";
+import { getMediaExtraProperty, patchMediaExtra } from "@/utils/mediaExtra";
 
 interface IMusicItemOptionsProps {
     /** 歌曲信息 */
@@ -54,12 +54,12 @@ export default function MusicItemOptions(props: IMusicItemOptionsProps) {
     const safeAreaInsets = useSafeAreaInsets();
 
     const downloaded = LocalMusicSheet.isLocalMusic(musicItem);
-    const associatedLrc = MediaMeta.get(musicItem)?.associatedLrc;
-
+    const associatedLrc = getMediaExtraProperty(musicItem, 'associatedLrc');
+   
     const options: IOption[] = [
         {
             icon: 'identification',
-            title: `ID: ${getMediaKey(musicItem)}`,
+            title: `ID: ${getMediaUniqueKey(musicItem)}`,
             onPress: () => {
                 mediaCache.setMediaCache(musicItem);
                 Clipboard.setString(
@@ -194,9 +194,10 @@ export default function MusicItemOptions(props: IMusicItemOptionsProps) {
             title: '解除关联歌词',
             show: !!associatedLrc,
             onPress: async () => {
-                MediaMeta.update(musicItem, {
-                    associatedLrc: undefined,
-                });
+                patchMediaExtra(musicItem, {
+                    associatedLrc: undefined
+                })
+
                 LyricManager.refreshLyric(false, true);
                 Toast.success('已解除关联歌词');
                 hidePanel();
