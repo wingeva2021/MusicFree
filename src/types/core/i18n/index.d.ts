@@ -29,6 +29,7 @@ export interface ILanguageData {
     "common.sure": string; // 确定
     "common.confirm": string; // 确认
     "common.view": string; // 查看
+    "common.open": string; // 打开
     "common.username": string; // 用户名
     "common.password": string; // 密码
     "common.cover": string; // 封面
@@ -53,6 +54,9 @@ export interface ILanguageData {
     "sidebar.backToDesktop": string; // 返回桌面
     "sidebar.exitApp": string; // 退出应用
     "sidebar.languageSettings": string; // 语言设置
+
+    // 检查更新相关
+    "checkUpdate.error.latestVersion": string; // 当前已是最新版本
 
     // 首页相关
     "home.recommendSheet": string; // 推荐歌单
@@ -237,6 +241,9 @@ export interface ILanguageData {
     "setCustomTheme.musicBarTextColor": string; // 音乐栏文字色
     "setCustomTheme.pageBackgroundColor": string; // 页面背景色
     "setCustomTheme.backdropColor": string; // 背景色
+    "setCustomTheme.cardColor": string; // 卡片背景色
+    "setCustomTheme.placeholderColor": string; // 输入框背景色
+    "setCustomTheme.tabBarColor": string; // 导航栏背景色
 
     // 备份与恢复相关
     "backupAndResume.beginBackup": string; // 开始备份
@@ -400,6 +407,9 @@ export interface ILanguageData {
     "dialog.downloadDialog.backupUrl": string; // 备用链接
     "dialog.editSheetDetail.sheetName": string; // 歌单名
     "dialog.subscriptionPluginDialog.title": string; // 订阅
+    "dialog.markdownDialog.openExternalLink": string; // Markdown对话框打开外部链接
+    "dialog.markdownDialog.clickToShowImage": string; // 点击展示图片
+    "dialog.markdownDialog.loadFailed": string; // 图片加载失败
 
     // 面板相关 - 播放列表
     "panel.playList.title": string; // 播放列表
