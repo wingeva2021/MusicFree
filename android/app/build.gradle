@@ -124,10 +124,10 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.tencent.qqmusiccar"
+    namespace "fun.upup.musicfree"
 
     defaultConfig {
-        applicationId "com.tencent.qqmusiccar"
+        applicationId "fun.upup.musicfree"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
