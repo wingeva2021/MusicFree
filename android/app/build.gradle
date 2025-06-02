@@ -127,7 +127,7 @@ android {
     namespace "fun.upup.musicfree"
 
     defaultConfig {
-        applicationId "fun.upup.musicfree"
+        applicationId "com.tencent.qqmusiccar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
