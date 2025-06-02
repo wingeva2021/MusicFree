@@ -124,10 +124,10 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "fun.upup.musicfree"
+    namespace "com.tencent.qqmusiccar"
 
     defaultConfig {
-        applicationId "fun.upup.musicfree"
+        applicationId "com.tencent.qqmusiccar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
@@ -141,14 +141,14 @@ android {
             keyPassword 'android'
         }
         // !! Add lines
-        /*
+        
          release {
-            storeFile file(keystoreProperties['RELEASE_STORE_FILE'])
-            storePassword keystoreProperties['RELEASE_STORE_PASSWORD']
-            keyAlias keystoreProperties['RELEASE_KEY_ALIAS']
-            keyPassword keystoreProperties['RELEASE_KEY_PASSWORD']
+            storeFile file('release.jks')
+            storePassword '123456789'
+            keyAlias 'cert'
+            keyPassword '123456789'
         }
-        */
+        
     }
     splits {
             abi {
@@ -168,7 +168,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            //signingConfig signingConfigs.release
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
