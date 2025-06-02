@@ -193,93 +193,20 @@ jobs:
           echo "Building Unsigned with App Version: ${{ env.APP_VERSION }}"
           ./gradlew assembleRelease --stacktrace
 
-      - name: Decode Keystore
+      - name: 确保 Release APK 文件存在
+        id: find_apk
         run: |
-          if [ -z "$RELEASE_KEYSTORE_BASE64_SECRET" ]; then
-            echo "Error: KEYSTORE_BASE64 secret is not set or empty."
+          if ! ls ./android/app/build/outputs/apk/release/*.apk 1> /dev/null 2>&1; then
+            echo "错误：未找到任何 .apk 文件在 ./android/app/build/outputs/apk/release/ 目录下。"
+            ls -R ./android/app/build/outputs/apk/ # 帮助调试
             exit 1
           fi
-          echo "Decoding keystore..."
-          mkdir -p $(dirname "$KEYSTORE_PATH") # 创建 keystore 目录
-          echo "$RELEASE_KEYSTORE_BASE64_SECRET" | base64 --decode > "$KEYSTORE_PATH"
-          echo "Keystore decoded to $KEYSTORE_PATH"
-          if [ ! -f "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PATH" ]; then
-            echo "Error: Keystore file was not created or is empty after decoding."
-            ls -l $(dirname "$KEYSTORE_PATH") # 显示目录内容以帮助调试
-            exit 1
-          fi
-          ls -l "$KEYSTORE_PATH"
+          echo "找到的 Release APKs:"
+          ls -lA ./android/app/build/outputs/apk/release/*.apk
 
-      - name: Find apksigner
-        id: find_apksigner
-        run: |
-          APKSIGNER_PATH=$(find $ANDROID_HOME/build-tools -name apksigner -type f | sort -V | tail -n 1)
-          if [ -z "$APKSIGNER_PATH" ]; then
-            echo "apksigner not found in $ANDROID_HOME/build-tools"
-            ALT_APKSIGNER_PATH=$(find /usr/lib/android-sdk/build-tools -name apksigner -type f | sort -V | tail -n 1)
-            if [ -z "$ALT_APKSIGNER_PATH" ]; then
-               echo "apksigner also not found in /usr/lib/android-sdk/build-tools. Please ensure Android SDK build-tools are correctly installed and $ANDROID_HOME is set."
-               exit 1
-            else
-               APKSIGNER_PATH=$ALT_APKSIGNER_PATH
-            fi
-          fi
-          echo "Found apksigner at: $APKSIGNER_PATH"
-          echo "APKSIGNER_PATH=$APKSIGNER_PATH" >> $GITHUB_OUTPUT
-
-      - name: Sign APKs
-        env:
-          APKSIGNER_PATH: ${{ steps.find_apksigner.outputs.APKSIGNER_PATH }}
-        run: |
-          echo "Signing APKs using KEYSTORE_PATH: $KEYSTORE_PATH"
-          UNSIGNED_APKS_DIR="android/app/build/outputs/apk/release"
-          SIGNED_APKS_DIR="android/app/build/outputs/apk/signed-release"
-          mkdir -p $SIGNED_APKS_DIR
-
-          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "Error: Signing credentials (KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) are not fully set from secrets."
-            exit 1
-          fi
-
-          found_unsigned_apk=false
-          for unsigned_apk in $UNSIGNED_APKS_DIR/*-unsigned.apk; do
-            if [ -f "$unsigned_apk" ]; then
-              found_unsigned_apk=true
-              filename=$(basename "$unsigned_apk")
-              signed_apk_name="${filename/-unsigned/}"
-              signed_apk_path="$SIGNED_APKS_DIR/$signed_apk_name"
-
-              echo "Signing $unsigned_apk -> $signed_apk_path"
-              "$APKSIGNER_PATH" sign \
-                --ks "$KEYSTORE_PATH" \
-                --ks-pass pass:"$KEYSTORE_PASSWORD" \
-                --key-pass pass:"$KEY_PASSWORD" \
-                --ks-key-alias "$KEY_ALIAS" \
-                --out "$signed_apk_path" \
-                "$unsigned_apk"
-
-              "$APKSIGNER_PATH" verify "$signed_apk_path"
-              echo "Successfully signed and verified $signed_apk_path"
-            fi
-          done
-
-          if [ "$found_unsigned_apk" = false ]; then
-            echo "Warning: No unsigned APK found matching pattern $UNSIGNED_APKS_DIR/*-unsigned.apk"
-          fi
-
-          echo "Listing signed APKs:"
-          ls -l $SIGNED_APKS_DIR
-
-      - name: Remove Keystore File
-        if: always()
-        run: |
-          echo "Removing keystore file..."
-          rm -f "$KEYSTORE_PATH"
-          echo "Keystore file removed."
-
-      - name: Upload Signed Release APK Artifact
+      - name: 上传所有构建产物 (APKs)
         uses: actions/upload-artifact@v4
         with:
-          name: signed-release-apk-manual-${{ env.APP_VERSION }}
-          path: android/app/build/outputs/apk/signed-release/*.apk
+          name: MusicFree-v${{ env.APP_VERSION }}-${{ github.sha }}-All-APKs
+          path: ./android/app/build/outputs/apk/release/*.apk # 使用通配符匹配所有 .apk 文件
           if-no-files-found: error
