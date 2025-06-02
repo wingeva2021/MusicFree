@@ -141,14 +141,14 @@ android {
             keyPassword 'android'
         }
         // !! Add lines
-        
+        /*
          release {
             storeFile file('release.jks')
             storePassword '123456789'
             keyAlias 'cert'
             keyPassword '123456789'
         }
-        
+        */
     }
     splits {
             abi {
@@ -168,7 +168,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.release
+            //signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
