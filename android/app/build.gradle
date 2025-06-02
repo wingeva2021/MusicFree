@@ -88,13 +88,11 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'org.webkit:android-jsc:+'
 
 // !! Add lines
-/*
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('keystore.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
-*/
 
 static def getVersion() {
     def inputFile = new File("../package.json")
@@ -141,14 +139,12 @@ android {
             keyPassword 'android'
         }
         // !! Add lines
-        /*
          release {
-            storeFile file('release.jks')
-            storePassword '123456789'
-            keyAlias 'cert'
-            keyPassword '123456789'
+            storeFile file(keystoreProperties['RELEASE_STORE_FILE'])
+            storePassword keystoreProperties['RELEASE_STORE_PASSWORD']
+            keyAlias keystoreProperties['RELEASE_KEY_ALIAS']
+            keyPassword keystoreProperties['RELEASE_KEY_PASSWORD']
         }
-        */
     }
     splits {
             abi {
@@ -168,7 +164,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            //signingConfig signingConfigs.release
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -178,6 +174,9 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+
+    // 添加ffmpeg扩展
+    implementation 'org.jellyfin.exoplayer:exoplayer-ffmpeg-extension:2.19.0+1'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -192,4 +191,3 @@ dependencies {
     implementation 'net.jthink:jaudiotagger:2.2.5'
     implementation 'androidx.core:core-splashscreen:1.0.0'
 }
-
